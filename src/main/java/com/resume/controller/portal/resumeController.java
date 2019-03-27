@@ -31,11 +31,12 @@ import com.resume.util.PropertiesUtil;
 import com.resume.vo.PythonResumeVo;
 /**
  * to do ：python端的接口 、 支付模块 、订单模块、简历导出作为pdf
+ * 要规定日期的格式
  * 主要功能：
  * 1.组合简历显示下的增删改功能
  * 2.简历上传 -> 调用算法解析入库 -> 生成es索引
  * @author mac
- *
+ *问题：应该针对哪类型数据进行处理
  */
 @Controller
 @RequestMapping("/resume/")
@@ -77,11 +78,10 @@ public class resumeController {
 		if(resume != null) {
 			for(int i=1;i<count;i++) {
 				ServerResponse<PythonResumeVo> response = JSONUtil.send(resume[i]);
-				logger.info("*********解析成功*********");
+				logger.info("*********解析简历成功*********");
 				PythonResumeVo pythonResumeVo =  response.getData();
-				logger.info(pythonResumeVo.getBasic_info().getName());
-				logger.info("******************");
 				iResumeService.resume_enter(user.getId(),pythonResumeVo);
+				logger.info("*********成功录入一份简历*********");
 			}
 			//解析后数组清空+count置1
 			count = 1;

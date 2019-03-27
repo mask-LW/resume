@@ -9,6 +9,7 @@ import java.util.Map;
 import java.util.concurrent.ExecutionException;
 import java.util.regex.Pattern;
 
+import org.apache.commons.lang.StringUtils;
 import org.elasticsearch.action.delete.DeleteResponse;
 import org.elasticsearch.action.index.IndexResponse;
 import org.elasticsearch.action.search.SearchRequestBuilder;
@@ -39,6 +40,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
+import com.github.pagehelper.StringUtil;
 import com.google.common.collect.Lists;
 import com.resume.common.ResponseCode;
 import com.resume.common.ServerResponse;
@@ -99,7 +101,7 @@ public class EsServiceImpl implements IEsService{
 	
 	
 	//统计性别中不同年龄段的学历分布
-	public ServerResponse<Map<String, Object>> aggGroupByEduInRenderAndAge(Integer userId){
+	public ServerResponse<Map<String, Object>> aggGroupByEduInGenderAndAge(Integer userId){
 		//男性 20-30 30-40 40-50 50-60
 		Map<String,Object> man = new HashMap<String,Object>();
 		Map<String,Object> woman = new HashMap<String,Object>();
@@ -125,7 +127,7 @@ public class EsServiceImpl implements IEsService{
 			RangeQueryBuilder qb = QueryBuilders.rangeQuery("age").gt(gt_age).lte(lte_age);
 			BoolQueryBuilder bqb = QueryBuilders.boolQuery();
 			bqb.must(QueryBuilders.matchPhraseQuery("userId", userId));
-			bqb.must(QueryBuilders.matchPhraseQuery("render", 1));
+			bqb.must(QueryBuilders.matchPhraseQuery("gender", "女"));
 			
 			
 			bqb.filter(qb);
@@ -156,7 +158,7 @@ public class EsServiceImpl implements IEsService{
 		RangeQueryBuilder qb = QueryBuilders.rangeQuery("age").gt(gt_age).lte(lte_age);
 		BoolQueryBuilder bqb = QueryBuilders.boolQuery();
 		bqb.must(QueryBuilders.matchPhraseQuery("userId", userId));
-		bqb.must(QueryBuilders.matchPhraseQuery("render", 0));
+		bqb.must(QueryBuilders.matchPhraseQuery("gender", "男"));
 		
 		
 		bqb.filter(qb);
@@ -187,7 +189,7 @@ public class EsServiceImpl implements IEsService{
 		//用户过滤
 		BoolQueryBuilder qb = QueryBuilders.boolQuery();
 		qb.must(QueryBuilders.matchPhraseQuery("userId", userId));
-		qb.must(QueryBuilders.matchPhraseQuery("render", 0));
+		qb.must(QueryBuilders.matchPhraseQuery("gender","男"));
 		
 		
 		//聚合属性
@@ -219,7 +221,7 @@ public class EsServiceImpl implements IEsService{
 		//用户过滤
 		BoolQueryBuilder qb = QueryBuilders.boolQuery();
 		qb.must(QueryBuilders.matchPhraseQuery("userId", userId));
-		qb.must(QueryBuilders.matchPhraseQuery("render", 1));
+		qb.must(QueryBuilders.matchPhraseQuery("gender", "女"));
 		
 		
 		//聚合属性
@@ -280,45 +282,57 @@ public class EsServiceImpl implements IEsService{
 	
 	
 	
-	public ServerResponse<List<Map<String, Object>>> multipleQuery(String company,
-			String job,String edu,Integer render,
+	public ServerResponse<List<Map<String, Object>>> multipleQuery(Integer userId,String company,
+			String job,String edu,String gender,
 			Integer gt_age , Integer lt_age){
-		BoolQueryBuilder boolQuery = QueryBuilders.boolQuery();
 		
-		if( company != null) {
-			boolQuery.must(QueryBuilders.matchQuery("currentCompany", company));
-		}
-		if( job != null) {
-			boolQuery.must(QueryBuilders.matchQuery("job", job));
-		}
-		if( edu != null) {
-			boolQuery.must(QueryBuilders.matchQuery("edu", edu));
-		}
 		
-		if( render != null) {
-			boolQuery.must(QueryBuilders.matchQuery("render", render));
+		QueryBuilder queryBuilder = QueryBuilders.termQuery("userId", userId);
+		
+		BoolQueryBuilder qb = QueryBuilders.boolQuery();
+		
+		
+		if(company != null ) {
+			qb.must(QueryBuilders.matchPhraseQuery("currentCompany", company));
 		}
 		
-		RangeQueryBuilder rangeQuery = QueryBuilders.rangeQuery("age").from(gt_age);
-		if(lt_age != null && lt_age>16 ) {
-			rangeQuery.to(lt_age);
+		if(job != null ) {
+			qb.must(QueryBuilders.matchPhraseQuery("job", job));
 		}
-		boolQuery.filter(rangeQuery);
+		if(edu != null ) {
+			qb.must(QueryBuilders.matchPhraseQuery("edu", edu));
+		}
+		if(gender != null ) {
+			qb.must(QueryBuilders.matchPhraseQuery("currentCompany", gender));
+		}
+//		RangeQueryBuilder rangQuery = QueryBuilders.rangeQuery("age").from(gt_age);
+//		
+//		if(lt_age  != null && lt_age >16) {
+//			rangQuery.to(lt_age);
+//		}
+//		
+//		qb.filter(rangQuery);
+		
 		
 		SearchRequestBuilder builder = this.client.prepareSearch("resume")
 				.setTypes("message").setSearchType(SearchType.DFS_QUERY_THEN_FETCH)
-				.setQuery(boolQuery)
-				.setFrom(0).setSize(10);
+				.setQuery(qb).setPostFilter(queryBuilder).setSize(10000);
+				
 		SearchResponse response = builder.get();
+		
 		List<Map<String,Object>> result = new ArrayList<Map<String,Object>>();
 		
-		for(SearchHit hit : response.getHits()) {
-			 result.add(hit.getSourceAsMap());
-		}
+		SearchHits searchHits = response.getHits();
 		String time = response.getTook().toString();
-	    Integer count = result.size();
-		String total = count+ " result be found in " +time;
-		return ServerResponse.createBySuccess(total, result);
+        System.out.println("共搜到:"+searchHits.getTotalHits()+"条结果!");
+		
+        String msg = searchHits.getTotalHits() + " result be found in " +time;
+		
+		for(SearchHit hit : response.getHits()) {
+			  Map<String, Object> source = hit.getSourceAsMap();
+	          result.add(source);
+		}
+		return ServerResponse.createBySuccess(msg, result);
 	}
 	
 	/**
@@ -327,7 +341,8 @@ public class EsServiceImpl implements IEsService{
 	public ServerResponse<List<Map<String, Object>>> queryString(Integer userId,String string) {
 		//不用指定字段，全文搜索 
 		//用户过滤
-		QueryBuilder qb = QueryBuilders.termQuery("userId", userId);
+		BoolQueryBuilder qb = QueryBuilders.boolQuery();
+		qb.must(QueryBuilders.matchPhraseQuery("userId", userId));
 		
 		HighlightBuilder highlightBuilder = new HighlightBuilder().field("*").requireFieldMatch(false);;
 		
@@ -342,7 +357,7 @@ public class EsServiceImpl implements IEsService{
 		
 		SearchRequestBuilder builder = this.client.prepareSearch("resume")
 				.setTypes("message").setSearchType(SearchType.DFS_QUERY_THEN_FETCH)
-				.setQuery(queryBuilder)
+				.setQuery(queryBuilder).setSize(10000).setPostFilter(qb)
 				.highlighter(highlightBuilder);
 		
 		SearchResponse response = builder.get();
@@ -562,7 +577,7 @@ public class EsServiceImpl implements IEsService{
 		//查询并获取结果
 		SearchRequestBuilder builder = this.client.prepareSearch("resume")
 						.setTypes("message").setSearchType(SearchType.DFS_QUERY_THEN_FETCH)
-						.setQuery(qb).setPostFilter(queryBuilder);
+						.setQuery(qb).setPostFilter(queryBuilder).setSize(10000);
 	    SearchResponse response = builder.get();
         
 
@@ -588,11 +603,12 @@ public class EsServiceImpl implements IEsService{
 	public ServerResponse insert(ResumeBasicInfo resumeBasicInfo,
 			List<ResumeSchoolExp>  resumeSchoolExpList,
 			List<ResumeWorkExp>  resumeWorkExpList) {
-		logger.info("开始");
+		logger.info("开始插入es");
 		EsResumeVo esResumeVo;
 		try {
-			esResumeVo = this.assembleEsResumeVo(resumeBasicInfo, resumeSchoolExpList, resumeWorkExpList);
 			logger.info("组装esResumeVo类");
+			esResumeVo = this.assembleEsResumeVo(resumeBasicInfo, resumeSchoolExpList, resumeWorkExpList);
+			
 			ServerResponse re = this.add(esResumeVo);
 			logger.info("增加索引");
 			if(re.getStatus() == ResponseCode.SUCCESS.getCode()) {

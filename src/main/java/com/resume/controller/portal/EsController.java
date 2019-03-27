@@ -25,12 +25,11 @@ import ch.qos.logback.classic.Logger;
  * 2.简单的统计分析数据交给前端画图
  * 3.搜索引擎（全文索引、姓名查询、条件查询）
  * 4.直接删除操作
- * 
+ * 5.人名检索和全文检索时检索内容高亮显示️
+ * 6.标签管理模块
  * 待做：
- * 1.查询内容高亮显示☑️实现人名检索和全文检索时但高亮显示️
  * 2.查询建议 --api找不到
- * 3.多选操作
- * 4.增加标签、标签管理模块☑
+ * 3.多选操作️
  * 5.批量操作： 删除、增加、查看️
  * @author mac
  *
@@ -52,7 +51,7 @@ public class EsController {
         if(user ==null){
             return ServerResponse.createByErrorCodeMessage(ResponseCode.NEED_LOGIN.getCode(),ResponseCode.NEED_LOGIN.getDesc());
         }
-		return iEsService.aggGroupByEduInRenderAndAge(user.getId());
+		return iEsService.aggGroupByEduInGenderAndAge(user.getId());
 	}
 	
 	
@@ -148,10 +147,14 @@ public class EsController {
 			@RequestParam(value="job",required = false)String job,
 			@RequestParam(value="edu",required = false)String edu,
 			HttpSession session,
-			@RequestParam(value="render",required = false)Integer render,
-			@RequestParam(value="gt_age",defaultValue="16")Integer gt_age,
-			@RequestParam(value="lt_age",defaultValue="60",required = false)Integer lt_age) {
-		return iEsService.multipleQuery(company,job,edu,render,gt_age,lt_age);
+			@RequestParam(value="gender",required = false)String gender,
+			@RequestParam(value="gt_age",required = false)Integer gt_age,
+			@RequestParam(value="lt_age",required = false)Integer lt_age) {
+		User user = (User)session.getAttribute(Const.CURRENT_USER);
+        if(user ==null){
+            return ServerResponse.createByErrorCodeMessage(ResponseCode.NEED_LOGIN.getCode(),ResponseCode.NEED_LOGIN.getDesc());
+        }	
+		return iEsService.multipleQuery(user.getId(),company,job,edu,gender,gt_age,lt_age);
 	}
 	
 	/**
@@ -203,8 +206,8 @@ public class EsController {
 	 */
 	@RequestMapping("list.do")
 	@ResponseBody
-	public ServerResponse list(HttpSession session,@RequestParam(value="render", defaultValue="", required=false) String render) {
-		logger.info("render"+render);
+	public ServerResponse list(HttpSession session) {
+		
 		//todo 
 		//后端获取传进来的json，进行顺序、筛选
 		//前端：条件查询的页面
